@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ZWV Business Map</title>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAZ9ImmOlz6B406tHMjbs_RSnpjXXYW0b0"></script>
+  <style>
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+
+    .info-card {
+      width: 260px;
+      font-family: Arial, sans-serif;
+    }
+
+    .info-body {
+      padding: 12px 4px 4px 4px;
+    }
+
+    .info-title {
+      margin: 0 0 6px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .info-address {
+      margin: 0 0 10px;
+      font-size: 13px;
+      color: #555;
+    }
+
+    .info-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .category-tag {
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: white;
+      white-space: nowrap;
+    }
+
+    .directions-btn {
+      display: block;
+      text-align: center;
+      background: #1a73e8;
+      color: white;
+      padding: 10px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .directions-btn:hover {
+      background-color: #3367D6;
+    }
+
+    #legend {
+      background: white;
+      padding: 14px;
+      margin: 10px;
+      font-family: Arial, sans-serif;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+      width: 250px;
+      max-height: 70vh;   
+      overflow: hidden;   
+      display: flex;
+      flex-direction: column;
+    }
+
+    #legend h2 {
+      margin: 0 0 10px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+
+    .section-header h4 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: #444;
+    }
+
+    .section-controls {
+      display: flex;
+      gap: 6px;
+    }
+
+    .control-btn {
+      font-size: 11px;
+      padding: 3px 6px;
+      border-radius: 4px;
+      background: #eee;
+      cursor: pointer;
+    }
+
+    .control-btn:hover {
+      background: #ddd;
+    }
+
+    /* Select All toggle button */
+    .control-btn.toggle {
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: #1a73e8;
+      color: white;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    .control-btn.toggle.off {
+      background: #e0e0e0;
+      color: #555;
+    }
+
+    /* Chevron */
+    .chevron {
+      font-size: 12px;
+      margin-left: 6px;
+      transition: transform 0.2s;
+    }
+
+    .chevron.collapsed {
+      transform: rotate(-90deg);
+    }
+
+    .section-content {
+      margin-top: 6px;
+    }
+
+    .section-content.collapsed {
+      display: none;
+    }
+
+    /* Filter row */
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .filter-row:hover {
+      background: #f5f5f5;
+    }
+
+    .filter-row.inactive {
+      opacity: 0.5;
+    }
+
+    /* Checkbox */
+    .checkbox {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #999;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+
+    .checkbox.checked {
+      background: #1a73e8;
+      border-color: #1a73e8;
+      color: white;
+    }
+
+    /* Dot */
+    .filter-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+    }
+
+    #result-count {
+      font-size: 13px;
+      font-weight: 500;
+      margin-top: 10px;
+      text-align: center;
+      border-top: 1px solid #eee;
+      padding-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="legend"></div>
+
+  <script>
+    const DATA_URL = "https://script.google.com/macros/s/AKfycbxizC3H04PnanMQVBU5fLnXclLooZUGzU1t0_eTQCppQ6zIL8TJL_XkyuNEwWgucp6V/exec";
+
+    const CATEGORY_COLORS = {
+      "Bulk Grocery Store": "#1c237e",
+      "Bulk Food - Small Section": "#9f2a16",
+      "Snacks/Nuts": "#eec600",
+      "Spices/Tea/Coffee/Condiments": "#f97b00",
+      "Olives/Cheese/Deli Meat": "#afb326",
+      "Speciality Foods/Products": "#8d094e",
+      "Bulk Cleaning Products": "#009e58",
+      "Health & Beauty Products": "#1288ce",
+      "Zero Waste Living Products": "#bdbdbd"
+    };
+
+    // Add icons for store types
+    const TYPE_ICONS = {
+      physical: "http://maps.google.com/mapfiles/ms/icons/red.png",
+      online:   "http://maps.google.com/mapfiles/ms/icons/blue.png",
+      coop:     "http://maps.google.com/mapfiles/ms/icons/green.png"
+    };
+    
+    // Map sheet values to icon keys
+    const STORETYPE_MAP = {
+      "physical": "physical",               
+      "online only": "online",
+      "co-op/member only": "coop"
+    };
+
+    const STORETYPE_COLORS = {
+      physical: "red",
+      online: "blue",
+      coop: "green"
+    };
+
+    let map;
+    let markers = [];
+    let infoWindow;
+
+    // Filter state
+    let activeTypes = new Set(["physical", "online", "coop"]);
+    let activeCategories = new Set(Object.keys(CATEGORY_COLORS));
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById("map"), {
+        zoom: 10,
+        center: { lat: -37.77, lng: 144.96 } // Change to your region
+      });
+      
+      infoWindow = new google.maps.InfoWindow();
+
+      const legend = document.getElementById("legend");
+      legend.innerHTML = "";
+
+      // TITLE
+      const title = document.createElement("h2");
+      title.innerText = "Filter Tool";
+      legend.appendChild(title);
+
+      // ---------- STORE TYPE SECTION ----------
+      const typeSection = document.createElement("div");
+
+      // Header
+      const typeHeader = document.createElement("div");
+      typeHeader.className = "section-header";
+
+      const typeTitleWrap = document.createElement("div");
+      typeTitleWrap.style.display = "flex";
+      typeTitleWrap.style.alignItems = "center";
+
+      const typeTitle = document.createElement("h4");
+      typeTitle.innerText = "Store Type";
+
+      const typeChevron = document.createElement("span");
+      typeChevron.className = "chevron";
+      typeChevron.innerText = "▾";
+
+      typeTitleWrap.appendChild(typeTitle);
+      typeTitleWrap.appendChild(typeChevron);
+
+      const typeControls = document.createElement("div");
+      typeControls.className = "section-controls";
+
+      const typeToggleAll = document.createElement("div");
+      typeToggleAll.className = "control-btn toggle";
+      typeToggleAll.innerText = "Select All";
+
+      typeControls.appendChild(typeToggleAll);
+
+      typeHeader.appendChild(typeTitleWrap);
+      typeHeader.appendChild(typeControls);
+
+      // Content
+      const typeContent = document.createElement("div");
+      typeContent.className = "section-content";
+
+      // Collapse toggle
+      typeHeader.onclick = (e) => {
+        if (e.target.classList.contains("control-btn")) return;
+        typeContent.classList.toggle("collapsed");
+        typeChevron.classList.toggle("collapsed");
+      };
+
+      // Build rows
+      const typeRows = [];
+
+      Object.entries(TYPE_ICONS).forEach(([key, icon]) => {
+        const row = document.createElement("div");
+        row.className = "filter-row";
+
+        const checkbox = document.createElement("div");
+        checkbox.className = "checkbox checked";
+        checkbox.innerText = "✓";
+
+        const img = document.createElement("img");
+        img.src = icon;
+        img.className = "filter-dot";
+
+        const label = document.createElement("span");
+        label.innerText =
+          key === "physical" ? "Physical Store" :
+          key === "online" ? "Online Only" :
+          "Co-op / Member Only";
+
+        row.appendChild(checkbox);
+        row.appendChild(img);
+        row.appendChild(label);
+
+        row.onclick = () => {
+          if (activeTypes.has(key)) {
+            activeTypes.delete(key);
+            checkbox.classList.remove("checked");
+            checkbox.innerText = "";
+            row.classList.add("inactive");
+          } else {
+            activeTypes.add(key);
+            checkbox.classList.add("checked");
+            checkbox.innerText = "✓";
+            row.classList.remove("inactive");
+          }
+
+          // Update toggle state
+          updateTypeToggleState();
+
+          filterMarkers();
+        };
+
+        typeRows.push({ key, row, checkbox });
+        typeContent.appendChild(row);
+      });
+
+      // Toggle button logic
+      function updateTypeToggleState() {
+        if (activeTypes.size === Object.keys(TYPE_ICONS).length) {
+          typeToggleAll.classList.remove("off");
+        } else {
+          typeToggleAll.classList.add("off");
+        }
+      }
+
+      typeToggleAll.onclick = () => {
+        if (activeTypes.size === Object.keys(TYPE_ICONS).length) {
+          // turn OFF
+          activeTypes.clear();
+          typeRows.forEach(r => {
+            r.checkbox.classList.remove("checked");
+            r.checkbox.innerText = "";
+            r.row.classList.add("inactive");
+          });
+          typeToggleAll.classList.add("off");
+        } else {
+          // turn ON
+          activeTypes = new Set(Object.keys(TYPE_ICONS));
+          typeRows.forEach(r => {
+            r.checkbox.classList.add("checked");
+            r.checkbox.innerText = "✓";
+            r.row.classList.remove("inactive");
+          });
+          typeToggleAll.classList.remove("off");
+        }
+        filterMarkers();
+      };
+
+      typeSection.appendChild(typeHeader);
+      typeSection.appendChild(typeContent);
+      legend.appendChild(typeSection);
+
+      // ---------- CATEGORY SECTION ----------
+      const catSection = document.createElement("div");
+
+      // Header
+      const catHeader = document.createElement("div");
+      catHeader.className = "section-header";
+
+      const catTitleWrap = document.createElement("div");
+      catTitleWrap.style.display = "flex";
+      catTitleWrap.style.alignItems = "center";
+
+      const catTitle = document.createElement("h4");
+      catTitle.innerText = "Product Categories";
+
+      const catChevron = document.createElement("span");
+      catChevron.className = "chevron";
+      catChevron.innerText = "▾";
+
+      catTitleWrap.appendChild(catTitle);
+      catTitleWrap.appendChild(catChevron);
+
+      const catControls = document.createElement("div");
+      catControls.className = "section-controls";
+
+      const catToggleAll = document.createElement("div");
+      catToggleAll.className = "control-btn toggle";
+      catToggleAll.innerText = "Select All";
+
+      catControls.appendChild(catToggleAll);
+
+      catHeader.appendChild(catTitleWrap);
+      catHeader.appendChild(catControls);
+
+      // Content
+      const catContent = document.createElement("div");
+      catContent.className = "section-content";
+
+      // Collapse toggle
+      catHeader.onclick = (e) => {
+        if (e.target.classList.contains("control-btn")) return;
+        catContent.classList.toggle("collapsed");
+        catChevron.classList.toggle("collapsed");
+      };
+
+      // Rows
+      const catRows = [];
+
+      Object.entries(CATEGORY_COLORS).forEach(([cat, color]) => {
+        const row = document.createElement("div");
+        row.className = "filter-row";
+
+        const checkbox = document.createElement("div");
+        checkbox.className = "checkbox checked";
+        checkbox.innerText = "✓";
+
+        const dot = document.createElement("span");
+        dot.className = "filter-dot";
+        dot.style.background = color;
+
+        const label = document.createElement("span");
+        label.innerText = cat;
+
+        row.appendChild(checkbox);
+        row.appendChild(dot);
+        row.appendChild(label);
+
+        row.onclick = () => {
+          if (activeCategories.has(cat)) {
+            activeCategories.delete(cat);
+            checkbox.classList.remove("checked");
+            checkbox.innerText = "";
+            row.classList.add("inactive");
+          } else {
+            activeCategories.add(cat);
+            checkbox.classList.add("checked");
+            checkbox.innerText = "✓";
+            row.classList.remove("inactive");
+          }
+
+          updateCatToggleState();
+          filterMarkers();
+        };
+
+        catRows.push({ cat, row, checkbox });
+        catContent.appendChild(row);
+      });
+
+      // Toggle logic
+      function updateCatToggleState() {
+        if (activeCategories.size === Object.keys(CATEGORY_COLORS).length) {
+          catToggleAll.classList.remove("off");
+        } else {
+          catToggleAll.classList.add("off");
+        }
+      }
+
+      catToggleAll.onclick = () => {
+        if (activeCategories.size === Object.keys(CATEGORY_COLORS).length) {
+          activeCategories.clear();
+          catRows.forEach(r => {
+            r.checkbox.classList.remove("checked");
+            r.checkbox.innerText = "";
+            r.row.classList.add("inactive");
+          });
+          catToggleAll.classList.add("off");
+        } else {
+          activeCategories = new Set(Object.keys(CATEGORY_COLORS));
+          catRows.forEach(r => {
+            r.checkbox.classList.add("checked");
+            r.checkbox.innerText = "✓";
+            r.row.classList.remove("inactive");
+          });
+          catToggleAll.classList.remove("off");
+        }
+        filterMarkers();
+      };
+
+      catSection.appendChild(catHeader);
+      catSection.appendChild(catContent);
+      legend.appendChild(catSection);
+
+      // ---------- RESULT COUNT ----------
+      const countDiv = document.createElement("div");
+      countDiv.id = "result-count";
+      countDiv.innerText = "Loading...";
+      legend.appendChild(countDiv);
+      
+      map.controls[google.maps.ControlPosition.RIGHT_TOP].push(legend);
+
+      loadMarkers();
+      setInterval(loadMarkers, 60000);
+    }
+
+    function loadMarkers() {
+      fetch(DATA_URL)
+        .then(res => res.json())
+        .then(data => {
+          markers.forEach(m => m.setMap(null));
+          markers = [];
+
+          data.forEach(entry => {
+            const storeTypeRaw = entry.storeType || "physical";
+            const storeTypeKey = STORETYPE_MAP[storeTypeRaw.toLowerCase()] || "physical";
+            
+            const marker = new google.maps.Marker({
+              position: { lat: entry.lat, lng: entry.lng },
+              map: map,
+              title: entry.name,
+              icon: TYPE_ICONS[storeTypeKey] 
+            });
+
+            // Store metadata for filtering
+            marker.storeType = storeTypeKey;
+            marker.categories = entry.category
+              ? entry.category.split(",").map(c => c.trim())
+              : [];
+
+            const content = `
+              <div class="info-card">
+                <div class="info-body">
+                  <p style="margin:-3px 0 6px 0; font-weight:500; font-size:13px; font-style:italic; color:black">
+                    Store Type:
+                    <span style="color:${STORETYPE_COLORS[storeTypeKey]}">
+                      ${storeTypeRaw}
+                    </span>
+                  </p>
+                  <h3 class="info-title">${entry.name}</h3>
+                  <p class="info-address">${entry.address}</p><br>
+                  
+                  <div class="info-tags">
+                      ${entry.category ? entry.category
+                      .split(",")
+                      .map(cat => {
+                        const trimmed = cat.trim();
+                        const color = CATEGORY_COLORS[trimmed] || "#757575";
+                        return `
+                          <span 
+                            class="category-tag" 
+                            style="background:${color}"
+                          >
+                            ${trimmed}
+                          </span>
+                        `;
+                      })
+                      .join("") 
+                    : ""}
+                  </div>
+
+                  ${entry.details ? `<p><strong>Extra Info: </strong> ${entry.details}</p>` : ""}
+
+                  <a 
+                    href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(entry.name + ', ' + entry.address)}"
+                    target="_blank"
+                    class="directions-btn"
+                  >
+                    View on Google Maps
+                  </a>
+                </div>
+              </div>
+            `;
+
+            marker.addListener("click", () => {
+              infoWindow.setContent(content);
+              infoWindow.open(map, marker);
+            });
+
+            markers.push(marker);
+          });
+
+          // Apply filter after loading new markers
+          filterMarkers();
+        });
+    }
+
+    function filterMarkers() {
+      let visibleCount = 0;
+
+      markers.forEach(marker => {
+        const typeMatch = activeTypes.has(marker.storeType);
+        const categoryMatch =
+          marker.categories.length === 0 ||
+          marker.categories.some(cat => activeCategories.has(cat));
+
+        if (typeMatch && categoryMatch) {
+          marker.setMap(map);
+            visibleCount++;
+        } else {
+          marker.setMap(null);
+        }
+      });
+      document.getElementById("result-count").innerText = `${visibleCount} stores shown`;
+    }
+
+    window.onload = initMap;
+  </script>
+</body>
+</html>
