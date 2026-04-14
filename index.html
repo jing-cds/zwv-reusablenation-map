@@ -2,7 +2,6 @@
 <html>
 <head>
   <title>ZWV Business Map</title>
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA3gxWK5Y9YtBh0RiFdWZU3HrA2bCQ5Kzc"></script>
   <style>
     #map {
       height: 100vh;
@@ -68,8 +67,8 @@
       border-radius: 12px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.25);
       width: 250px;
-      max-height: 70vh;   
-      overflow: hidden;   
+      max-height: 80vh;
+      overflow-y: auto;
       display: flex;
       flex-direction: column;
     }
@@ -78,6 +77,87 @@
       margin: 0 0 10px;
       font-size: 16px;
       font-weight: 700;
+    }
+
+    #search-wrapper {
+      position: relative;
+      margin-bottom: 10px;
+    }
+
+    #search-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 32px 8px 10px;
+      font-size: 13px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      outline: none;
+      font-family: Arial, sans-serif;
+    }
+
+    #search-input:focus {
+      border-color: #1a73e8;
+    }
+
+    #search-clear {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      font-size: 16px;
+      color: #999;
+      display: none;
+      line-height: 1;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    #search-clear:hover {
+      color: #333;
+    }
+
+    #search-results {
+      max-height: 180px;
+      overflow-y: auto;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      display: none;
+    }
+
+    .search-result-item {
+      padding: 8px 10px;
+      font-size: 13px;
+      cursor: pointer;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .search-result-item:last-child {
+      border-bottom: none;
+    }
+
+    .search-result-item:hover {
+      background: #f0f6ff;
+    }
+
+    .search-result-name {
+      font-weight: 500;
+      color: #111;
+    }
+
+    .search-result-address {
+      font-size: 11px;
+      color: #777;
+      margin-top: 2px;
+    }
+
+    .search-no-results {
+      padding: 10px;
+      font-size: 13px;
+      color: #888;
+      text-align: center;
     }
 
     .section-header {
@@ -112,7 +192,6 @@
       background: #ddd;
     }
 
-    /* Select All toggle button */
     .control-btn.toggle {
       font-size: 11px;
       padding: 4px 8px;
@@ -128,7 +207,6 @@
       color: #555;
     }
 
-    /* Chevron */
     .chevron {
       font-size: 12px;
       margin-left: 6px;
@@ -147,7 +225,6 @@
       display: none;
     }
 
-    /* Filter row */
     .filter-row {
       display: flex;
       align-items: center;
@@ -166,7 +243,6 @@
       opacity: 0.5;
     }
 
-    /* Checkbox */
     .checkbox {
       width: 16px;
       height: 16px;
@@ -176,6 +252,7 @@
       align-items: center;
       justify-content: center;
       font-size: 12px;
+      flex-shrink: 0;
     }
 
     .checkbox.checked {
@@ -184,11 +261,11 @@
       color: white;
     }
 
-    /* Dot */
     .filter-dot {
       width: 14px;
       height: 14px;
       border-radius: 50%;
+      flex-shrink: 0;
     }
 
     #result-count {
@@ -198,6 +275,7 @@
       text-align: center;
       border-top: 1px solid #eee;
       padding-top: 8px;
+      flex-shrink: 0;
     }
   </style>
 </head>
@@ -220,16 +298,14 @@
       "Zero Waste Living Products": "#bdbdbd"
     };
 
-    // Add icons for store types
     const TYPE_ICONS = {
       physical: "http://maps.google.com/mapfiles/ms/icons/red.png",
       online:   "http://maps.google.com/mapfiles/ms/icons/blue.png",
       coop:     "http://maps.google.com/mapfiles/ms/icons/green.png"
     };
-    
-    // Map sheet values to icon keys
+
     const STORETYPE_MAP = {
-      "physical": "physical",               
+      "physical": "physical",
       "online only": "online",
       "co-op/member only": "coop"
     };
@@ -244,30 +320,123 @@
     let markers = [];
     let infoWindow;
 
-    // Filter state
     let activeTypes = new Set(["physical", "online", "coop"]);
     let activeCategories = new Set(Object.keys(CATEGORY_COLORS));
+    let searchQuery = "";
 
     function initMap() {
       map = new google.maps.Map(document.getElementById("map"), {
         zoom: 10,
-        center: { lat: -37.77, lng: 144.96 } // Change to your region
+        center: { lat: -37.77, lng: 144.96 }
       });
-      
+
       infoWindow = new google.maps.InfoWindow();
 
       const legend = document.getElementById("legend");
       legend.innerHTML = "";
 
-      // TITLE
       const title = document.createElement("h2");
       title.innerText = "Filter Tool";
       legend.appendChild(title);
 
+      // ---------- SEARCH BAR ----------
+      const searchWrapper = document.createElement("div");
+      searchWrapper.id = "search-wrapper";
+
+      const searchInput = document.createElement("input");
+      searchInput.id = "search-input";
+      searchInput.type = "text";
+      searchInput.placeholder = "Search stores...";
+      searchInput.autocomplete = "off";
+
+      const searchClear = document.createElement("button");
+      searchClear.id = "search-clear";
+      searchClear.innerText = "✕";
+      searchClear.title = "Clear search";
+
+      const searchResults = document.createElement("div");
+      searchResults.id = "search-results";
+
+      searchInput.addEventListener("input", () => {
+        const q = searchInput.value.trim();
+        searchQuery = q;
+        searchClear.style.display = q ? "block" : "none";
+
+        if (q.length === 0) {
+          searchResults.style.display = "none";
+          searchResults.innerHTML = "";
+          filterMarkers();
+          return;
+        }
+
+        const matched = markers.filter(m =>
+          m.title.toLowerCase().includes(q.toLowerCase())
+        );
+
+        searchResults.innerHTML = "";
+        if (matched.length === 0) {
+          searchResults.style.display = "block";
+          const none = document.createElement("div");
+          none.className = "search-no-results";
+          none.innerText = "No stores found";
+          searchResults.appendChild(none);
+        } else {
+          searchResults.style.display = "block";
+          matched.slice(0, 8).forEach(m => {
+            const item = document.createElement("div");
+            item.className = "search-result-item";
+
+            const name = document.createElement("div");
+            name.className = "search-result-name";
+            name.innerText = m.title;
+
+            const addr = document.createElement("div");
+            addr.className = "search-result-address";
+            addr.innerText = m.storeAddress || "";
+
+            item.appendChild(name);
+            item.appendChild(addr);
+
+            item.addEventListener("click", () => {
+              map.panTo(m.getPosition());
+              map.setZoom(15);
+              google.maps.event.trigger(m, "click");
+              searchInput.value = m.title;
+              searchQuery = m.title;
+              searchResults.style.display = "none";
+              filterMarkers();
+            });
+
+            searchResults.appendChild(item);
+          });
+        }
+
+        filterMarkers();
+      });
+
+      searchClear.addEventListener("click", () => {
+        searchInput.value = "";
+        searchQuery = "";
+        searchClear.style.display = "none";
+        searchResults.style.display = "none";
+        searchResults.innerHTML = "";
+        filterMarkers();
+      });
+
+      // Close dropdown when clicking outside
+      document.addEventListener("click", (e) => {
+        if (!searchWrapper.contains(e.target)) {
+          searchResults.style.display = "none";
+        }
+      });
+
+      searchWrapper.appendChild(searchInput);
+      searchWrapper.appendChild(searchClear);
+      legend.appendChild(searchWrapper);
+      legend.appendChild(searchResults);
+
       // ---------- STORE TYPE SECTION ----------
       const typeSection = document.createElement("div");
-
-      // Header
       const typeHeader = document.createElement("div");
       typeHeader.className = "section-header";
 
@@ -293,22 +462,18 @@
       typeToggleAll.innerText = "Select All";
 
       typeControls.appendChild(typeToggleAll);
-
       typeHeader.appendChild(typeTitleWrap);
       typeHeader.appendChild(typeControls);
 
-      // Content
       const typeContent = document.createElement("div");
       typeContent.className = "section-content";
 
-      // Collapse toggle
       typeHeader.onclick = (e) => {
         if (e.target.classList.contains("control-btn")) return;
         typeContent.classList.toggle("collapsed");
         typeChevron.classList.toggle("collapsed");
       };
 
-      // Build rows
       const typeRows = [];
 
       Object.entries(TYPE_ICONS).forEach(([key, icon]) => {
@@ -345,10 +510,7 @@
             checkbox.innerText = "✓";
             row.classList.remove("inactive");
           }
-
-          // Update toggle state
           updateTypeToggleState();
-
           filterMarkers();
         };
 
@@ -356,7 +518,6 @@
         typeContent.appendChild(row);
       });
 
-      // Toggle button logic
       function updateTypeToggleState() {
         if (activeTypes.size === Object.keys(TYPE_ICONS).length) {
           typeToggleAll.classList.remove("off");
@@ -367,7 +528,6 @@
 
       typeToggleAll.onclick = () => {
         if (activeTypes.size === Object.keys(TYPE_ICONS).length) {
-          // turn OFF
           activeTypes.clear();
           typeRows.forEach(r => {
             r.checkbox.classList.remove("checked");
@@ -376,7 +536,6 @@
           });
           typeToggleAll.classList.add("off");
         } else {
-          // turn ON
           activeTypes = new Set(Object.keys(TYPE_ICONS));
           typeRows.forEach(r => {
             r.checkbox.classList.add("checked");
@@ -394,8 +553,6 @@
 
       // ---------- CATEGORY SECTION ----------
       const catSection = document.createElement("div");
-
-      // Header
       const catHeader = document.createElement("div");
       catHeader.className = "section-header";
 
@@ -421,22 +578,18 @@
       catToggleAll.innerText = "Select All";
 
       catControls.appendChild(catToggleAll);
-
       catHeader.appendChild(catTitleWrap);
       catHeader.appendChild(catControls);
 
-      // Content
       const catContent = document.createElement("div");
       catContent.className = "section-content";
 
-      // Collapse toggle
       catHeader.onclick = (e) => {
         if (e.target.classList.contains("control-btn")) return;
         catContent.classList.toggle("collapsed");
         catChevron.classList.toggle("collapsed");
       };
 
-      // Rows
       const catRows = [];
 
       Object.entries(CATEGORY_COLORS).forEach(([cat, color]) => {
@@ -470,7 +623,6 @@
             checkbox.innerText = "✓";
             row.classList.remove("inactive");
           }
-
           updateCatToggleState();
           filterMarkers();
         };
@@ -479,7 +631,6 @@
         catContent.appendChild(row);
       });
 
-      // Toggle logic
       function updateCatToggleState() {
         if (activeCategories.size === Object.keys(CATEGORY_COLORS).length) {
           catToggleAll.classList.remove("off");
@@ -513,16 +664,14 @@
       catSection.appendChild(catContent);
       legend.appendChild(catSection);
 
-      // ---------- RESULT COUNT ----------
       const countDiv = document.createElement("div");
       countDiv.id = "result-count";
       countDiv.innerText = "Loading...";
       legend.appendChild(countDiv);
-      
+
       map.controls[google.maps.ControlPosition.RIGHT_TOP].push(legend);
 
       loadMarkers();
-      setInterval(loadMarkers, 60000);
     }
 
     function loadMarkers() {
@@ -535,16 +684,16 @@
           data.forEach(entry => {
             const storeTypeRaw = entry.storeType || "physical";
             const storeTypeKey = STORETYPE_MAP[storeTypeRaw.toLowerCase()] || "physical";
-            
+
             const marker = new google.maps.Marker({
               position: { lat: entry.lat, lng: entry.lng },
               map: map,
               title: entry.name,
-              icon: TYPE_ICONS[storeTypeKey] 
+              icon: TYPE_ICONS[storeTypeKey]
             });
 
-            // Store metadata for filtering
             marker.storeType = storeTypeKey;
+            marker.storeAddress = entry.address || "";
             marker.categories = entry.category
               ? entry.category.split(",").map(c => c.trim())
               : [];
@@ -560,28 +709,14 @@
                   </p>
                   <h3 class="info-title">${entry.name}</h3>
                   <p class="info-address">${entry.address}</p><br>
-                  
                   <div class="info-tags">
-                      ${entry.category ? entry.category
-                      .split(",")
-                      .map(cat => {
-                        const trimmed = cat.trim();
-                        const color = CATEGORY_COLORS[trimmed] || "#757575";
-                        return `
-                          <span 
-                            class="category-tag" 
-                            style="background:${color}"
-                          >
-                            ${trimmed}
-                          </span>
-                        `;
-                      })
-                      .join("") 
-                    : ""}
+                    ${entry.category ? entry.category.split(",").map(cat => {
+                      const trimmed = cat.trim();
+                      const color = CATEGORY_COLORS[trimmed] || "#757575";
+                      return `<span class="category-tag" style="background:${color}">${trimmed}</span>`;
+                    }).join("") : ""}
                   </div>
-
                   ${entry.details ? `<p><strong>Extra Info: </strong> ${entry.details}</p>` : ""}
-
                   <a 
                     href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(entry.name + ', ' + entry.address)}"
                     target="_blank"
@@ -601,31 +736,36 @@
             markers.push(marker);
           });
 
-          // Apply filter after loading new markers
           filterMarkers();
         });
     }
 
     function filterMarkers() {
       let visibleCount = 0;
+      const q = searchQuery.toLowerCase();
 
       markers.forEach(marker => {
         const typeMatch = activeTypes.has(marker.storeType);
         const categoryMatch =
           marker.categories.length === 0 ||
           marker.categories.some(cat => activeCategories.has(cat));
+        const searchMatch =
+          q === "" || marker.title.toLowerCase().includes(q);
 
-        if (typeMatch && categoryMatch) {
+        if (typeMatch && categoryMatch && searchMatch) {
           marker.setMap(map);
-            visibleCount++;
+          visibleCount++;
         } else {
           marker.setMap(null);
         }
       });
+
       document.getElementById("result-count").innerText = `${visibleCount} stores shown`;
     }
+  </script>
 
-    window.onload = initMap;
+  <script async defer
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA3gxWK5Y9YtBh0RiFdWZU3HrA2bCQ5Kzc&callback=initMap">
   </script>
 </body>
 </html>
